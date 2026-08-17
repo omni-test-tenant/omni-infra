@@ -1,3 +1,9 @@
+# Four-engine test cluster for the OmniCommerce suites.
+#
+# Host ports are parameterised because pinning them to the defaults made the stack
+# unstartable anywhere those ports were already bound — including the CI runner, where
+# 5432 belongs to another service. `scripts/omni-stack.mjs` allocates free ports and
+# writes them to an env file, so a developer and CI run the identical stack.
 services:
   postgres:
     image: postgres:16-alpine
@@ -6,39 +12,42 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-omni_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-omni_admin} -d ${POSTGRES_DB:-omnicommerce}"]
       interval: 3s
       timeout: 3s
-      retries: 10
+      retries: 20
 
   mongodb:
     image: mongo:7-jammy
     ports:
-      - "127.0.0.1:27017:27017"
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 3s
       timeout: 3s
-      retries: 10
+      retries: 20
 
   redis:
     image: redis:7-alpine
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
       timeout: 3s
-      retries: 10
+      retries: 20
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://127.0.0.1:9092
+      # The advertised host listener must name the port clients actually connect to.
+      # If it does not, a client resolves the broker to an address nothing is listening on
+      # and fails after the initial metadata request appears to succeed.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://127.0.0.1:${KAFKA_PORT:-9092}
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
@@ -47,4 +56,9 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
     ports:
-      - "127.0.0.1:9092:9092"
+      - "127.0.0.1:${KAFKA_PORT:-9092}:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
