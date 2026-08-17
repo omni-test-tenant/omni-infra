@@ -1,2 +1,2 @@
-# omni-infra
-Docker Compose and environment configuration for 5-engine testing
+# OmniCommerce Multi-Store 5-Engine Infrastructure
+Docker Compose topology providing local and staging multi-store database instances.
